@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Giám Sát Giao Dịch Tronscan</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          "Helvetica Neue", Arial, sans-serif;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: #333;
+        height: 100vh;
+        overflow: hidden;
+      }
+
+      .container {
+        display: flex;
+        height: 100vh;
+      }
+
+      .sidebar {
+        width: 250px;
+        background: rgba(255, 255, 255, 0.95);
+        padding: 20px;
+        box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
+        overflow-y: auto;
+      }
+
+      .main-content {
+        flex: 1;
+        padding: 30px;
+        overflow-y: auto;
+      }
+
+      .logo {
+        font-size: 24px;
+        font-weight: bold;
+        color: #667eea;
+        margin-bottom: 30px;
+        text-align: center;
+      }
+
+      .nav-item {
+        padding: 12px 15px;
+        margin-bottom: 5px;
+        border-radius: 8px;
+        cursor: pointer;
+        transition: all 0.3s;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .nav-item:hover {
+        background: #f0f0f0;
+      }
+
+      .nav-item.active {
+        background: #667eea;
+        color: white;
+      }
+
+      .card {
+        background: white;
+        border-radius: 12px;
+        padding: 25px;
+        margin-bottom: 20px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      }
+
+      .card-header {
+        font-size: 20px;
+        font-weight: 600;
+        margin-bottom: 20px;
+        color: #333;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      .status-indicator {
+        display: inline-block;
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        margin-right: 8px;
+      }
+
+      .status-connected {
+        background: #10b981;
+        box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.2);
+      }
+
+      .status-disconnected {
+        background: #ef4444;
+        box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.2);
+      }
+
+      .form-group {
+        margin-bottom: 20px;
+      }
+
+      .form-label {
+        display: block;
+        margin-bottom: 8px;
+        font-weight: 500;
+        color: #555;
+      }
+
+      .form-input {
+        width: 100%;
+        padding: 12px;
+        border: 2px solid #e5e7eb;
+        border-radius: 8px;
+        font-size: 14px;
+        transition: border 0.3s;
+      }
+
+      .form-input:focus {
+        outline: none;
+        border-color: #667eea;
+      }
+
+      .btn {
+        padding: 12px 24px;
+        border: none;
+        border-radius: 8px;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.3s;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .btn-primary {
+        background: #667eea;
+        color: white;
+      }
+
+      .btn-primary:hover {
+        background: #5568d3;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+      }
+
+      .btn-success {
+        background: #10b981;
+        color: white;
+      }
+
+      .btn-success:hover {
+        background: #059669;
+      }
+
+      .btn-danger {
+        background: #ef4444;
+        color: white;
+      }
+
+      .btn-danger:hover {
+        background: #dc2626;
+      }
+
+      .btn-secondary {
+        background: #6b7280;
+        color: white;
+      }
+
+      .btn-secondary:hover {
+        background: #4b5563;
+      }
+
+      .btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+        transform: none !important;
+      }
+
+      .wallet-list {
+        list-style: none;
+        margin-top: 20px;
+      }
+
+      .wallet-item {
+        background: #f9fafb;
+        padding: 15px;
+        margin-bottom: 10px;
+        border-radius: 8px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        border-left: 4px solid #667eea;
+      }
+
+      .wallet-info {
+        flex: 1;
+      }
+
+      .wallet-name {
+        font-weight: 600;
+        color: #333;
+        margin-bottom: 5px;
+      }
+
+      .wallet-address {
+        font-size: 12px;
+        color: #6b7280;
+        font-family: monospace;
+      }
+
+      .transaction-item {
+        background: #f9fafb;
+        padding: 15px;
+        margin-bottom: 15px;
+        border-radius: 8px;
+        border-left: 4px solid #10b981;
+      }
+
+      .transaction-header {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 10px;
+      }
+
+      .transaction-amount {
+        font-size: 18px;
+        font-weight: 600;
+        color: #10b981;
+      }
+
+      .transaction-time {
+        font-size: 12px;
+        color: #6b7280;
+      }
+
+      .transaction-details {
+        font-size: 13px;
+        color: #555;
+        line-height: 1.6;
+      }
+
+      .transaction-link {
+        color: #667eea;
+        text-decoration: none;
+        font-size: 12px;
+        margin-top: 8px;
+        display: inline-block;
+      }
+
+      .transaction-link:hover {
+        text-decoration: underline;
+      }
+
+      .empty-state {
+        text-align: center;
+        padding: 40px;
+        color: #6b7280;
+      }
+
+      .empty-state-icon {
+        font-size: 48px;
+        margin-bottom: 16px;
+      }
+
+      .page {
+        display: none;
+      }
+
+      .page.active {
+        display: block;
+      }
+
+      .control-buttons {
+        display: flex;
+        gap: 10px;
+        margin-top: 20px;
+      }
+
+      .alert {
+        padding: 12px 16px;
+        border-radius: 8px;
+        margin-bottom: 20px;
+        display: none;
+      }
+
+      .alert.show {
+        display: block;
+      }
+
+      .alert-success {
+        background: #d1fae5;
+        color: #065f46;
+        border-left: 4px solid #10b981;
+      }
+
+      .alert-error {
+        background: #fee2e2;
+        color: #991b1b;
+        border-left: 4px solid #ef4444;
+      }
+
+      .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 20px;
+        margin-bottom: 20px;
+      }
+
+      .stat-card {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 20px;
+        border-radius: 12px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      }
+
+      .stat-value {
+        font-size: 32px;
+        font-weight: bold;
+        margin-bottom: 5px;
+      }
+
+      .stat-label {
+        font-size: 14px;
+        opacity: 0.9;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="sidebar">
+        <div class="logo">🔍 TronMonitor</div>
+        <div class="nav-item active" data-page="dashboard">
+          <span>📊</span> Bảng Điều Khiển
+        </div>
+        <div class="nav-item" data-page="wallets"><span>👛</span> Ví</div>
+        <div class="nav-item" data-page="telegram">
+          <span>📱</span> Telegram
+        </div>
+        <div class="nav-item" data-page="transactions">
+          <span>📜</span> Giao Dịch
+        </div>
+      </div>
+
+      <div class="main-content">
+        <!-- Dashboard Page -->
+        <div class="page active" id="dashboard">
+          <div class="card">
+            <div class="card-header">
+              <span>Trạng Thái</span>
+              <span id="connection-status">
+                <span class="status-indicator status-disconnected"></span>
+                Đã Ngắt Kết Nối
+              </span>
+            </div>
+
+            <div class="stats-grid">
+              <div class="stat-card">
+                <div class="stat-value" id="wallet-count">0</div>
+                <div class="stat-label">Ví Đang Giám Sát</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-value" id="transaction-count">0</div>
+                <div class="stat-label">Giao Dịch Hôm Nay</div>
+              </div>
+            </div>
+
+            <div class="control-buttons">
+              <button class="btn btn-success" id="start-btn">
+                ▶️ Bắt Đầu Giám Sát
+              </button>
+              <button class="btn btn-danger" id="stop-btn" disabled>
+                ⏹️ Dừng Giám Sát
+              </button>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header">Giao Dịch Gần Đây</div>
+            <div id="recent-transactions">
+              <div class="empty-state">
+                <div class="empty-state-icon">📭</div>
+                <div>Chưa có giao dịch nào</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="page" id="wallets">
+          <div class="card">
+            <div class="card-header">Thêm Ví</div>
+
+            <div id="wallet-alert" class="alert"></div>
+
+            <div class="form-group">
+              <label class="form-label">Địa Chỉ Ví</label>
+              <input
+                type="text"
+                class="form-input"
+                id="wallet-address"
+                placeholder="TXxx..."
+              />
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Tên Ví (Tùy Chọn)</label>
+              <input
+                type="text"
+                class="form-input"
+                id="wallet-name"
+                placeholder="Ví Của Tôi"
+              />
+            </div>
+
+            <button class="btn btn-primary" id="add-wallet-btn">
+              ➕ Thêm Ví
+            </button>
+          </div>
+
+          <div class="card">
+            <div class="card-header">Danh Sách Ví Giám Sát</div>
+            <ul class="wallet-list" id="wallet-list">
+              <div class="empty-state">
+                <div class="empty-state-icon">👛</div>
+                <div>Chưa cấu hình ví nào</div>
+              </div>
+            </ul>
+          </div>
+        </div>
+
+        <!-- Telegram Page -->
+        <div class="page" id="telegram">
+          <div class="card">
+            <div class="card-header">Cấu Hình Telegram</div>
+
+            <div id="telegram-alert" class="alert"></div>
+
+            <div class="form-group">
+              <label class="form-label">Mã Token Bot</label>
+              <input
+                type="text"
+                class="form-input"
+                id="bot-token"
+                placeholder="123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"
+              />
+              <small style="color: #6b7280; display: block; margin-top: 5px">
+                Lấy mã token từ
+                <a href="https://t.me/BotFather" target="_blank">@BotFather</a>
+              </small>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Chat ID</label>
+              <input
+                type="text"
+                class="form-input"
+                id="chat-id"
+                placeholder="-1001234567890"
+              />
+              <small style="color: #6b7280; display: block; margin-top: 5px">
+                Dùng
+                <a href="https://t.me/userinfobot" target="_blank"
+                  >@userinfobot</a
+                >
+                để lấy chat ID
+              </small>
+            </div>
+
+            <div class="control-buttons">
+              <button class="btn btn-primary" id="save-telegram-btn">
+                💾 Lưu Cấu Hình
+              </button>
+              <button class="btn btn-secondary" id="test-telegram-btn">
+                🧪 Kiểm Tra Kết Nối
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Transactions Page -->
+        <div class="page" id="transactions">
+          <div class="card">
+            <div class="card-header">Lịch Sử Giao Dịch</div>
+            <div id="transaction-history">
+              <div class="empty-state">
+                <div class="empty-state-icon">📜</div>
+                <div>Chưa có giao dịch nào được ghi nhận</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script src="renderer.js"></script>
+  </body>
+</html>

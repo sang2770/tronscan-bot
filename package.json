@@ -1,0 +1,26 @@
+{
+  "name": "tronscan-notifier",
+  "version": "1.0.0",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --enable-logging"
+  },
+  "keywords": [
+    "electron",
+    "telegram",
+    "tronscan",
+    "crypto",
+    "monitor"
+  ],
+  "author": "",
+  "license": "ISC",
+  "description": "Electron app to monitor Tron transactions and send Telegram notifications",
+  "dependencies": {
+    "ws": "^8.18.0",
+    "node-telegram-bot-api": "^0.66.0"
+  },
+  "devDependencies": {
+    "electron": "^39.2.7"
+  }
+}

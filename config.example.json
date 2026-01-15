@@ -1,0 +1,20 @@
+{
+  "telegram": {
+    "botToken": "YOUR_BOT_TOKEN_HERE",
+    "chatId": "YOUR_CHAT_ID_HERE"
+  },
+  "wallets": [
+    {
+      "address": "TLj7LiUwgvznr2k8suvtBowGk6VcSJLTSn",
+      "name": "Example Wallet 1"
+    },
+    {
+      "address": "TSBTSx7SzihVkkq6RrMp3PTotDDBqTPFyg",
+      "name": "Example Wallet 2"
+    }
+  ],
+  "monitoring": {
+    "enabled": false,
+    "reconnectInterval": 5000
+  }
+}
