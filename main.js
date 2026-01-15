@@ -4,11 +4,14 @@ const fs = require('fs');
 const WebSocketMonitor = require('./src/websocket-monitor');
 const TelegramNotifier = require('./src/telegram-notifier');
 const ConfigManager = require('./src/config-manager');
+const BalanceReporter = require('./src/balance-reporter');
 
 let mainWindow;
 let wsMonitor;
 let telegramNotifier;
 let configManager;
+let balanceReporter;
+let reportScheduler = null;
 
 function createWindow() {
     mainWindow = new BrowserWindow({
@@ -44,11 +47,16 @@ function initializeServices() {
         );
     }
 
+    // Initialize Balance Reporter
+    if (config.tronscan && config.tronscan.apiKey) {
+        balanceReporter = new BalanceReporter(config.tronscan.apiKey);
+    }
+
     // Initialize WebSocket Monitor
     wsMonitor = new WebSocketMonitor(config.wallets);
 
     wsMonitor.on('transaction', (transaction) => {
-        console.log('New transaction detected:', transaction);
+        // console.log('New transaction detected:', transaction);
 
         // Send to renderer process
         if (mainWindow) {
@@ -81,6 +89,9 @@ function initializeServices() {
             mainWindow.webContents.send('ws-status', 'disconnected');
         }
     });
+
+    // Setup balance report scheduler
+    setupReportScheduler();
 }
 
 // IPC Handlers
@@ -162,6 +173,60 @@ ipcMain.handle('test-telegram', async () => {
         return { success: false, error: error.message };
     }
 });
+
+ipcMain.handle('test-balance-report', async () => {
+    try {
+        await sendBalanceReport();
+        return { success: true };
+    } catch (error) {
+        return { success: false, error: error.message };
+    }
+});
+
+function setupReportScheduler() {
+    // Clear existing scheduler
+    if (reportScheduler) {
+        clearInterval(reportScheduler);
+        reportScheduler = null;
+    }
+
+    const config = configManager.getConfig();
+
+    if (!config.report || !config.report.enabled || !config.report.time) {
+        return;
+    }
+
+    // Check every minute if it's time to report
+    reportScheduler = setInterval(() => {
+        const now = new Date();
+        const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+
+        if (currentTime === config.report.time) {
+            console.log('Time to send balance report:', currentTime);
+            sendBalanceReport();
+        }
+    }, 60000); // Check every minute
+
+    console.log('Balance report scheduler setup for', config.report.time);
+}
+
+async function sendBalanceReport() {
+    const config = configManager.getConfig();
+
+    if (!balanceReporter || !telegramNotifier || !config.wallets || config.wallets.length === 0) {
+        console.log('Cannot send balance report: services not initialized or no wallets');
+        return;
+    }
+
+    try {
+        console.log('Fetching balance for', config.wallets.length, 'wallets...');
+        const balances = await balanceReporter.getAllWalletsBalance(config.wallets);
+        await telegramNotifier.sendBalanceReport(balances);
+        console.log('Balance report sent successfully');
+    } catch (error) {
+        console.error('Error sending balance report:', error);
+    }
+}
 
 app.whenReady().then(() => {
     createWindow();

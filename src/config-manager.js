@@ -10,6 +10,14 @@ class ConfigManager {
                 botToken: '',
                 chatId: ''
             },
+            tronscan: {
+                apiKey: ''
+            },
+            report: {
+                enabled: false,
+                time: '09:00', // HH:mm format
+                timezone: 'Asia/Ho_Chi_Minh'
+            },
             wallets: [],
             monitoring: {
                 enabled: false,

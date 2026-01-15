@@ -1,16 +1,23 @@
-const WebSocket = require('ws');
 const EventEmitter = require('events');
+const https = require('https');
+const fs = require('fs');
+const path = require('path');
+const { app } = require('electron');
 
 class WebSocketMonitor extends EventEmitter {
     constructor(wallets = []) {
         super();
         this.wallets = wallets;
-        this.ws = null;
-        this.reconnectInterval = 5000;
-        this.reconnectTimer = null;
+        this.pollingInterval = 10000; // 10 seconds
+        this.pollingTimer = null;
         this.isRunning = false;
-        this.wsUrl = 'wss://apilist.tronscan.org/api/tronsocket/homepage';
-        this.processedTransactions = new Set(); // To avoid duplicate notifications
+        this.lastProcessedTimestamp = {}; // Track last processed timestamp per wallet
+        this.hasNewTransactions = false; // Flag to track if there are new transactions
+        this.apiUrl = 'https://apilist.tronscan.org/api/filter/trc20/transfers';
+        this.dataFilePath = path.join(app.getPath('userData'), 'wallet-timestamps.json');
+
+        // Load saved timestamps
+        this.loadTimestamps();
     }
 
     start() {
@@ -20,183 +27,172 @@ class WebSocketMonitor extends EventEmitter {
         }
 
         this.isRunning = true;
-        this.connect();
+        this.emit('connected');
+        this.pollTransactions();
     }
 
     stop() {
         this.isRunning = false;
-        if (this.reconnectTimer) {
-            clearTimeout(this.reconnectTimer);
-            this.reconnectTimer = null;
+        if (this.pollingTimer) {
+            clearTimeout(this.pollingTimer);
+            this.pollingTimer = null;
         }
-        if (this.ws) {
-            this.ws.close();
-            this.ws = null;
+        // Save timestamps when stopping
+        this.saveTimestamps();
+        this.emit('disconnected');
+    }
+
+    loadTimestamps() {
+        try {
+            if (fs.existsSync(this.dataFilePath)) {
+                const data = fs.readFileSync(this.dataFilePath, 'utf8');
+                this.lastProcessedTimestamp = JSON.parse(data);
+                console.log('Loaded timestamps for', Object.keys(this.lastProcessedTimestamp).length, 'wallets');
+            }
+        } catch (error) {
+            console.error('Error loading timestamps:', error);
+            this.lastProcessedTimestamp = {};
         }
     }
 
-    connect() {
+    saveTimestamps() {
+        try {
+            fs.writeFileSync(this.dataFilePath, JSON.stringify(this.lastProcessedTimestamp, null, 2), 'utf8');
+            console.log('Saved timestamps for', Object.keys(this.lastProcessedTimestamp).length, 'wallets');
+        } catch (error) {
+            console.error('Error saving timestamps:', error);
+        }
+    }
+
+    async pollTransactions() {
         if (!this.isRunning) return;
 
-        console.log('Connecting to WebSocket:', this.wsUrl);
+        this.hasNewTransactions = false; // Reset flag
 
         try {
-            this.ws = new WebSocket(this.wsUrl);
+            // Poll transactions for each wallet
+            for (const wallet of this.wallets) {
+                await this.fetchWalletTransactions(wallet);
+            }
 
-            this.ws.on('open', () => {
-                console.log('WebSocket connected');
-                this.emit('connected');
-            });
-
-            this.ws.on('message', (data) => {
-                try {
-                    const message = JSON.parse(data.toString());
-                    this.handleMessage(message);
-                } catch (error) {
-                    console.error('Error parsing WebSocket message:', error);
-                }
-            });
-
-            this.ws.on('error', (error) => {
-                console.error('WebSocket error:', error);
-                this.emit('error', error);
-            });
-
-            this.ws.on('close', () => {
-                console.log('WebSocket disconnected');
-                this.emit('disconnected');
-                this.ws = null;
-
-                // Attempt to reconnect if still running
-                if (this.isRunning) {
-                    console.log(`Reconnecting in ${this.reconnectInterval / 1000} seconds...`);
-                    this.reconnectTimer = setTimeout(() => {
-                        this.connect();
-                    }, this.reconnectInterval);
-                }
-            });
+            // Only save timestamps if there are new transactions
+            if (this.hasNewTransactions) {
+                this.saveTimestamps();
+            }
         } catch (error) {
-            console.error('Error creating WebSocket:', error);
+            console.error('Error polling transactions:', error);
             this.emit('error', error);
+        }
 
-            if (this.isRunning) {
-                this.reconnectTimer = setTimeout(() => {
-                    this.connect();
-                }, this.reconnectInterval);
-            }
+        // Schedule next poll
+        if (this.isRunning) {
+            this.pollingTimer = setTimeout(() => {
+                this.pollTransactions();
+            }, this.pollingInterval);
         }
     }
 
-    handleMessage(message) {
-        // Check if message contains transaction info
-        if (message.latest_transaction_info && message.latest_transaction_info.data) {
-            const transactions = message.latest_transaction_info.data;
+    async fetchWalletTransactions(wallet) {
+        return new Promise((resolve, reject) => {
+            const url = `${this.apiUrl}?limit=20&start=0&sort=-timestamp&count=true&filterTokenValue=0&relatedAddress=${wallet.address}`;
 
-            if (Array.isArray(transactions)) {
-                transactions.forEach(tx => {
-                    this.processTransaction(tx);
+            https.get(url, (res) => {
+                let data = '';
+
+                res.on('data', (chunk) => {
+                    data += chunk;
                 });
-            }
-        }
-    }
 
-    processTransaction(tx) {
-        if (!tx || !tx.hash) return;
-
-        // Check if already processed (avoid duplicates)
-        if (this.processedTransactions.has(tx.hash)) {
-            return;
-        }
-
-        // Check if transaction involves any of our monitored wallets
-        const matchedWallets = this.findMatchingWallets(tx);
-
-        if (matchedWallets.length > 0) {
-            this.processedTransactions.add(tx.hash);
-
-            // Clean up old transactions from the set to prevent memory issues
-            if (this.processedTransactions.size > 1000) {
-                const iterator = this.processedTransactions.values();
-                for (let i = 0; i < 500; i++) {
-                    this.processedTransactions.delete(iterator.next().value);
-                }
-            }
-
-            // Emit transaction event with enriched data
-            const enrichedTx = this.enrichTransaction(tx, matchedWallets);
-            this.emit('transaction', enrichedTx);
-        } else {
-            // get first 1 transaction only for testing
-            this.processedTransactions.add(tx.hash);
-            const enrichedTx = this.enrichTransaction(tx, matchedWallets);
-            this.emit('transaction', enrichedTx);
-        }
-    }
-
-    findMatchingWallets(tx) {
-        const matched = [];
-        const walletMap = new Map(this.wallets.map(w => [w.address.toLowerCase(), w]));
-
-        // Check owner address (from)
-        if (tx.ownerAddress) {
-            const wallet = walletMap.get(tx.ownerAddress.toLowerCase());
-            if (wallet) {
-                matched.push({ ...wallet, type: 'from' });
-            }
-        }
-
-        // Check to address
-        if (tx.toAddress) {
-            const wallet = walletMap.get(tx.toAddress.toLowerCase());
-            if (wallet) {
-                matched.push({ ...wallet, type: 'to' });
-            }
-        }
-
-        // Check to address list
-        if (tx.toAddressList && Array.isArray(tx.toAddressList)) {
-            tx.toAddressList.forEach(addr => {
-                const wallet = walletMap.get(addr.toLowerCase());
-                if (wallet && !matched.find(m => m.address === wallet.address)) {
-                    matched.push({ ...wallet, type: 'to' });
-                }
+                res.on('end', () => {
+                    try {
+                        const response = JSON.parse(data);
+                        this.handleApiResponse(response, wallet);
+                        resolve();
+                    } catch (error) {
+                        console.error('Error parsing API response:', error);
+                        reject(error);
+                    }
+                });
+            }).on('error', (error) => {
+                console.error('API request error:', error);
+                reject(error);
             });
-        }
-
-        return matched;
+        });
     }
 
-    enrichTransaction(tx, matchedWallets) {
-        const fromWallet = matchedWallets.find(w => w.type === 'from');
-        const toWallet = matchedWallets.find(w => w.type === 'to');
+    handleApiResponse(response, wallet) {
+        if (response.token_transfers && Array.isArray(response.token_transfers)) {
+            const walletKey = wallet.address.toLowerCase();
+            const lastTimestamp = this.lastProcessedTimestamp[walletKey] || 0;
+
+            // Filter only new transactions
+            const newTransactions = response.token_transfers.filter(tx => tx.block_ts > lastTimestamp);
+
+            if (newTransactions.length > 0) {
+                this.hasNewTransactions = true; // Mark that we have new transactions
+
+                // Process transactions in reverse order (oldest first)
+                newTransactions.reverse().forEach(tx => {
+                    this.processTransaction(tx, wallet);
+                });
+
+                // Update last processed timestamp to the newest transaction
+                const newestTimestamp = Math.max(...response.token_transfers.map(tx => tx.block_ts));
+                this.lastProcessedTimestamp[walletKey] = newestTimestamp;
+            } else {
+                // console.log(`No new transactions for wallet ${wallet.address}`);
+            }
+        }
+    }
+
+    processTransaction(tx, wallet) {
+        if (!tx || !tx.transaction_id) return;
+
+        // Emit transaction event with enriched data
+        const enrichedTx = this.enrichTransaction(tx, wallet);
+        this.emit('transaction', enrichedTx);
+    }
+
+    enrichTransaction(tx, wallet) {
+        // Determine transaction direction
+        const isIncoming = tx.to_address.toLowerCase() === wallet.address.toLowerCase();
+        const transferType = isIncoming ? 'In' : 'Out';
 
         // Calculate amount with decimals
         let amount = '0';
-        if (tx.amount && tx.tokenDecimal) {
-            amount = (parseFloat(tx.amount) / Math.pow(10, tx.tokenDecimal)).toFixed(tx.tokenDecimal);
+        if (tx.quant && tx.tokenInfo && tx.tokenInfo.tokenDecimal) {
+            amount = (parseFloat(tx.quant) / Math.pow(10, tx.tokenInfo.tokenDecimal)).toFixed(tx.tokenInfo.tokenDecimal);
         }
 
+        // Find wallet names
+        const fromWallet = this.wallets.find(w => w.address.toLowerCase() === tx.from_address.toLowerCase());
+        const toWallet = this.wallets.find(w => w.address.toLowerCase() === tx.to_address.toLowerCase());
+
         return {
-            hash: tx.hash,
+            hash: tx.transaction_id,
             from: {
-                address: tx.ownerAddress,
+                address: tx.from_address,
                 name: fromWallet ? fromWallet.name : null
             },
             to: {
-                address: tx.toAddress,
+                address: tx.to_address,
                 name: toWallet ? toWallet.name : null
             },
             amount: amount,
             token: {
-                name: tx.tokenName,
-                abbr: tx.tokenAbbr,
-                logo: tx.tokenLogo,
-                type: tx.tokenType
+                name: tx.tokenInfo.tokenName,
+                abbr: tx.tokenInfo.tokenAbbr,
+                logo: tx.tokenInfo.tokenLogo,
+                type: tx.tokenInfo.tokenType
             },
-            contractType: tx.contractType,
-            timestamp: tx.timestamp,
+            contractType: transferType,
+            timestamp: tx.block_ts,
             block: tx.block,
-            matchedWallets: matchedWallets,
+            matchedWallets: [{
+                ...wallet,
+                type: isIncoming ? 'to' : 'from'
+            }],
+            transferType: transferType,
             raw: tx
         };
     }
@@ -209,7 +205,7 @@ class WebSocketMonitor extends EventEmitter {
     getStatus() {
         return {
             running: this.isRunning,
-            connected: this.ws && this.ws.readyState === WebSocket.OPEN,
+            connected: this.isRunning,
             walletsCount: this.wallets.length
         };
     }

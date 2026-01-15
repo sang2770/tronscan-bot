@@ -140,6 +140,13 @@ async function loadTelegramConfig() {
     config = await ipcRenderer.invoke('get-config');
     document.getElementById('bot-token').value = config.telegram.botToken || '';
     document.getElementById('chat-id').value = config.telegram.chatId || '';
+
+    // Load Tronscan API key
+    document.getElementById('tronscan-api-key').value = config.tronscan?.apiKey || '';
+
+    // Load report config
+    document.getElementById('report-enabled').checked = config.report?.enabled || false;
+    document.getElementById('report-time').value = config.report?.time || '09:00';
 }
 
 document.getElementById('save-telegram-btn').addEventListener('click', async () => {
@@ -170,6 +177,41 @@ document.getElementById('test-telegram-btn').addEventListener('click', async () 
         showAlert('telegram-alert', 'Gửi tin nhắn thử thành công! Kiểm tra Telegram của bạn.', 'success');
     } else {
         showAlert('telegram-alert', `Không thể gửi tin nhắn thử: ${result.error}`, 'error');
+    }
+});
+
+document.getElementById('save-report-btn').addEventListener('click', async () => {
+    const apiKey = document.getElementById('tronscan-api-key').value.trim();
+    const reportEnabled = document.getElementById('report-enabled').checked;
+    const reportTime = document.getElementById('report-time').value;
+
+    if (!config.tronscan) {
+        config.tronscan = {};
+    }
+    config.tronscan.apiKey = apiKey;
+
+    if (!config.report) {
+        config.report = {};
+    }
+    config.report.enabled = reportEnabled;
+    config.report.time = reportTime;
+
+    const result = await ipcRenderer.invoke('save-config', config);
+
+    if (result.success) {
+        showAlert('telegram-alert', 'Lưu cấu hình báo cáo thành công!', 'success');
+    } else {
+        showAlert('telegram-alert', 'Không thể lưu cấu hình báo cáo', 'error');
+    }
+});
+
+document.getElementById('test-report-btn').addEventListener('click', async () => {
+    const result = await ipcRenderer.invoke('test-balance-report');
+
+    if (result.success) {
+        showAlert('telegram-alert', 'Đã gửi báo cáo số dư! Kiểm tra Telegram của bạn.', 'success');
+    } else {
+        showAlert('telegram-alert', `Không thể gửi báo cáo: ${result.error}`, 'error');
     }
 });
 
@@ -225,6 +267,14 @@ function shortenAddress(address) {
 }
 
 function getContractTypeName(contractType) {
+    // Handle new transfer type format
+    if (contractType === 'In') {
+        return 'Tiền vào';
+    } else if (contractType === 'Out') {
+        return 'Tiền ra';
+    }
+
+    // Fallback to old contract type mapping
     const typeMap = {
         '1': 'Chuyển Tiền',
         '2': 'Chuyển Tài Sản',
