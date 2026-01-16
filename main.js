@@ -62,12 +62,12 @@ function initializeServices() {
   }
 
   // Initialize Balance Reporter
-  if (config.tronscan && config.tronscan.apiKey) {
-    balanceReporter = new BalanceReporter(config.tronscan.apiKey);
+  if (config.tronscan && config.tronscan.apiKeys && config.tronscan.apiKeys.length > 0) {
+    balanceReporter = new BalanceReporter(config.tronscan.apiKeys);
   }
 
   // Initialize WebSocket Monitor
-  wsMonitor = new WebSocketMonitor(config.wallets);
+  wsMonitor = new WebSocketMonitor(config.wallets, config.tronscan.apiKeys || []);
 
   wsMonitor.on("transaction", (transaction) => {
     // console.log('New transaction detected:', transaction);

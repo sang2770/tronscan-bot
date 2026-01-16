@@ -2,8 +2,23 @@ const { ipcRenderer } = require('electron');
 
 // State
 let config = null;
-let transactions = [];
 let isMonitoring = false;
+let currentWalletPage = 1;
+let walletsPerPage = 20;
+
+// Performance optimization
+let updateStatsTimeout = null;
+let loadWalletsTimeout = null;
+
+// Debounce function
+function debounce(func, delay) {
+    return function() {
+        const context = this;
+        const args = arguments;
+        clearTimeout(func.timeout);
+        func.timeout = setTimeout(() => func.apply(context, args), delay);
+    };
+}
 
 // DOM Elements
 const pages = document.querySelectorAll('.page');
@@ -27,8 +42,6 @@ navItems.forEach(item => {
             loadWallets();
         } else if (pageName === 'telegram') {
             loadTelegramConfig();
-        } else if (pageName === 'transactions') {
-            loadTransactionHistory();
         }
     });
 });
@@ -36,7 +49,7 @@ navItems.forEach(item => {
 // Initialize
 async function init() {
     config = await ipcRenderer.invoke('get-config');
-    updateStats();
+    debouncedUpdateStats();
     loadWallets();
 }
 
@@ -81,8 +94,8 @@ document.getElementById('add-wallet-btn').addEventListener('click', async () => 
         document.getElementById('wallet-address').value = '';
         document.getElementById('wallet-name').value = '';
         config = await ipcRenderer.invoke('get-config');
-        loadWallets();
-        updateStats();
+        debouncedLoadWallets();
+        debouncedUpdateStats();
     }
 });
 
@@ -100,17 +113,73 @@ async function loadWallets() {
         return;
     }
 
-    walletList.innerHTML = config.wallets.map(wallet => `
-    <li class="wallet-item">
-      <div class="wallet-info">
-        <div class="wallet-name">${wallet.name}</div>
-        <div class="wallet-address">${wallet.address}</div>
-      </div>
-      <button class="btn btn-danger" onclick="removeWallet('${wallet.address}')">
-        🗑️
-      </button>
-    </li>
-  `).join('');
+    // Pagination for better performance with many wallets
+    const startIndex = (currentWalletPage - 1) * walletsPerPage;
+    const endIndex = startIndex + walletsPerPage;
+    const walletsToShow = config.wallets.slice(startIndex, endIndex);
+
+    // Use DocumentFragment for better performance
+    const fragment = document.createDocumentFragment();
+    
+    walletsToShow.forEach(wallet => {
+        const li = document.createElement('li');
+        li.className = 'wallet-item';
+        li.innerHTML = `
+            <div class="wallet-info">
+                <div class="wallet-name">${wallet.name}</div>
+                <div class="wallet-address">${wallet.address}</div>
+            </div>
+            <button class="btn btn-danger" onclick="removeWallet('${wallet.address}')">
+                🗑️
+            </button>
+        `;
+        fragment.appendChild(li);
+    });
+    
+    // Add pagination controls if needed
+    if (config.wallets.length > walletsPerPage) {
+        const paginationDiv = document.createElement('div');
+        paginationDiv.className = 'pagination-controls';
+        paginationDiv.style.cssText = 'text-align: center; margin-top: 15px;';
+        
+        const totalPages = Math.ceil(config.wallets.length / walletsPerPage);
+        const prevBtn = document.createElement('button');
+        prevBtn.className = 'btn btn-secondary';
+        prevBtn.style.marginRight = '10px';
+        prevBtn.textContent = '← Trước';
+        prevBtn.disabled = currentWalletPage === 1;
+        prevBtn.onclick = () => {
+            if (currentWalletPage > 1) {
+                currentWalletPage--;
+                loadWallets();
+            }
+        };
+        
+        const pageInfo = document.createElement('span');
+        pageInfo.style.margin = '0 10px';
+        pageInfo.textContent = `Trang ${currentWalletPage}/${totalPages} (${config.wallets.length} ví)`;
+        
+        const nextBtn = document.createElement('button');
+        nextBtn.className = 'btn btn-secondary';
+        nextBtn.style.marginLeft = '10px';
+        nextBtn.textContent = 'Sau →';
+        nextBtn.disabled = currentWalletPage === totalPages;
+        nextBtn.onclick = () => {
+            if (currentWalletPage < totalPages) {
+                currentWalletPage++;
+                loadWallets();
+            }
+        };
+        
+        paginationDiv.appendChild(prevBtn);
+        paginationDiv.appendChild(pageInfo);
+        paginationDiv.appendChild(nextBtn);
+        fragment.appendChild(paginationDiv);
+    }
+    
+    // Clear and append all at once
+    walletList.innerHTML = '';
+    walletList.appendChild(fragment);
 }
 
 async function removeWallet(address) {
@@ -122,8 +191,17 @@ async function removeWallet(address) {
     if (result.success) {
         showAlert('wallet-alert', 'Xóa ví thành công!', 'success');
         config = await ipcRenderer.invoke('get-config');
-        loadWallets();
-        updateStats();
+        
+        // Reset to first page if current page would be empty
+        const totalPages = Math.ceil(config.wallets.length / walletsPerPage);
+        if (currentWalletPage > totalPages && totalPages > 0) {
+            currentWalletPage = totalPages;
+        } else if (config.wallets.length === 0) {
+            currentWalletPage = 1;
+        }
+        
+        debouncedLoadWallets();
+        debouncedUpdateStats();
     }
 }
 
@@ -136,8 +214,8 @@ async function loadTelegramConfig() {
     document.getElementById('bot-token').value = config.telegram.botToken || '';
     document.getElementById('chat-id').value = config.telegram.chatId || '';
 
-    // Load Tronscan API key
-    document.getElementById('tronscan-api-key').value = config.tronscan?.apiKey || '';
+    // Load Tronscan API keys
+    loadApiKeys();
 
     // Load report config
     document.getElementById('report-enabled').checked = config.report?.enabled || false;
@@ -175,15 +253,103 @@ document.getElementById('test-telegram-btn').addEventListener('click', async () 
     }
 });
 
-document.getElementById('save-report-btn').addEventListener('click', async () => {
+// API Key Management
+document.getElementById('add-api-key-btn').addEventListener('click', async () => {
     const apiKey = document.getElementById('tronscan-api-key').value.trim();
-    const reportEnabled = document.getElementById('report-enabled').checked;
-    const reportTime = document.getElementById('report-time').value;
+
+    if (!apiKey) {
+        showAlert('api-key-alert', 'Vui lòng nhập API key', 'error');
+        return;
+    }
 
     if (!config.tronscan) {
         config.tronscan = {};
     }
-    config.tronscan.apiKey = apiKey;
+    if (!config.tronscan.apiKeys) {
+        config.tronscan.apiKeys = [];
+    }
+
+    // Check if API key already exists
+    if (config.tronscan.apiKeys.includes(apiKey)) {
+        showAlert('api-key-alert', 'API key này đã tồn tại', 'error');
+        return;
+    }
+
+    config.tronscan.apiKeys.push(apiKey);
+
+    const result = await ipcRenderer.invoke('save-config', config);
+
+    if (result.success) {
+        showAlert('api-key-alert', 'Thêm API key thành công!', 'success');
+        document.getElementById('tronscan-api-key').value = '';
+        loadApiKeys();
+    } else {
+        showAlert('api-key-alert', 'Không thể lưu API key', 'error');
+    }
+});
+
+async function loadApiKeys() {
+    config = await ipcRenderer.invoke('get-config');
+    const apiKeyList = document.getElementById('api-key-list');
+
+    if (!config.tronscan || !config.tronscan.apiKeys || config.tronscan.apiKeys.length === 0) {
+        apiKeyList.innerHTML = `
+            <div class="empty-state">
+                <div class="empty-state-icon">🔑</div>
+                <div>Chưa có API key nào</div>
+            </div>
+        `;
+        return;
+    }
+
+    const fragment = document.createDocumentFragment();
+    
+    config.tronscan.apiKeys.forEach((apiKey, index) => {
+        const li = document.createElement('li');
+        li.className = 'wallet-item';
+        li.innerHTML = `
+            <div class="wallet-info">
+                <div class="wallet-name">API Key #${index + 1}</div>
+                <div class="wallet-address">${apiKey.substring(0, 20)}...${apiKey.substring(apiKey.length - 10)}</div>
+            </div>
+            <button class="btn btn-danger" onclick="removeApiKey('${apiKey}')">
+                🗑️
+            </button>
+        `;
+        fragment.appendChild(li);
+    });
+    
+    apiKeyList.innerHTML = '';
+    apiKeyList.appendChild(fragment);
+}
+
+async function removeApiKey(apiKey) {
+    if (!confirm('Bạn có chắc chắn muốn xóa API key này?')) {
+        return;
+    }
+
+    if (!config.tronscan || !config.tronscan.apiKeys) {
+        return;
+    }
+
+    config.tronscan.apiKeys = config.tronscan.apiKeys.filter(key => key !== apiKey);
+
+    const result = await ipcRenderer.invoke('save-config', config);
+
+    if (result.success) {
+        showAlert('api-key-alert', 'Xóa API key thành công!', 'success');
+        loadApiKeys();
+    } else {
+        showAlert('api-key-alert', 'Không thể xóa API key', 'error');
+    }
+}
+
+// Make removeApiKey available globally
+window.removeApiKey = removeApiKey;
+
+document.getElementById('save-report-btn').addEventListener('click', async () => {
+    const reportEnabled = document.getElementById('report-enabled').checked;
+    const reportTime = document.getElementById('report-time').value;
 
     if (!config.report) {
         config.report = {};
@@ -210,78 +376,6 @@ document.getElementById('test-report-btn').addEventListener('click', async () =>
     }
 });
 
-// Transactions
-function loadTransactionHistory() {
-    const historyContainer = document.getElementById('transaction-history');
-
-    if (transactions.length === 0) {
-        historyContainer.innerHTML = `
-      <div class="empty-state">
-        <div class="empty-state-icon">📜</div>
-        <div>Chưa có giao dịch nào được ghi nhận</div>
-      </div>
-    `;
-        return;
-    }
-
-    historyContainer.innerHTML = transactions.map(tx => renderTransaction(tx)).join('');
-}
-
-function renderTransaction(tx) {
-    const date = new Date(tx.timestamp);
-    const timeStr = date.toLocaleString();
-
-    const fromName = tx.from.name ? `${tx.from.name}` : shortenAddress(tx.from.address);
-    const toName = tx.to.name ? `${tx.to.name}` : shortenAddress(tx.to.address);
-
-    return `
-    <div class="transaction-item">
-      <div class="transaction-header">
-        <div class="transaction-amount">
-          ${tx.amount} ${tx.token.abbr.toUpperCase()}
-        </div>
-        <div class="transaction-time">${timeStr}</div>
-      </div>
-      <div class="transaction-details">
-        <div><strong>Từ:</strong> ${fromName}</div>
-        <div><strong>Đến:</strong> ${toName}</div>
-        <div><strong>Loại:</strong> ${getContractTypeName(tx.contractType)}</div>
-        <div><strong>Khối:</strong> ${tx.block}</div>
-      </div>
-      <a href="https://tronscan.org/#/transaction/${tx.hash}" target="_blank" class="transaction-link">
-        Xem trên Tronscan →
-      </a>
-    </div>
-  `;
-}
-
-function shortenAddress(address) {
-    if (!address) return 'Không rõ';
-    if (address.length <= 12) return address;
-    return `${address.substring(0, 6)}...${address.substring(address.length - 6)}`;
-}
-
-function getContractTypeName(contractType) {
-    // Handle new transfer type format
-    if (contractType === 'In') {
-        return 'Tiền vào';
-    } else if (contractType === 'Out') {
-        return 'Tiền ra';
-    }
-
-    // Fallback to old contract type mapping
-    const typeMap = {
-        '1': 'Chuyển Tiền',
-        '2': 'Chuyển Tài Sản',
-        '4': 'Bầu Witness',
-        '11': 'Tạo Token',
-        '31': 'Gọi Smart Contract',
-        '44': 'Giao Dịch Exchange',
-        '57': 'Cập Nhật Quyền Tài Khoản',
-    };
-    return typeMap[contractType] || `Loại Hợp Đồng ${contractType}`;
-}
-
 // WebSocket Events
 ipcRenderer.on('ws-status', (event, status) => {
     const statusElement = document.getElementById('connection-status');
@@ -301,24 +395,9 @@ ipcRenderer.on('ws-status', (event, status) => {
 
 ipcRenderer.on('new-transaction', (event, transaction) => {
     console.log('New transaction received:', transaction);
-
-    // Add to transactions array
-    transactions.unshift(transaction);
-
-    // Keep only last 100 transactions
-    if (transactions.length > 100) {
-        transactions = transactions.slice(0, 100);
-    }
-
-    // Update UI
-    updateStats();
-    updateRecentTransactions();
-
-    // Update transaction history if on that page
-    const historyPage = document.getElementById('transactions');
-    if (historyPage.classList.contains('active')) {
-        loadTransactionHistory();
-    }
+    
+    // Update UI 
+    debouncedUpdateStats();
 });
 
 ipcRenderer.on('ws-error', (event, error) => {
@@ -328,29 +407,13 @@ ipcRenderer.on('ws-error', (event, error) => {
 // Helper functions
 function updateStats() {
     const walletCount = config ? config.wallets.length : 0;
-    const today = new Date().setHours(0, 0, 0, 0);
-    const todayTransactions = transactions.filter(tx => tx.timestamp >= today).length;
 
     document.getElementById('wallet-count').textContent = walletCount;
-    document.getElementById('transaction-count').textContent = todayTransactions;
 }
 
-function updateRecentTransactions() {
-    const container = document.getElementById('recent-transactions');
-    const recentTxs = transactions.slice(0, 5);
-
-    if (recentTxs.length === 0) {
-        container.innerHTML = `
-      <div class="empty-state">
-        <div class="empty-state-icon">📭</div>
-        <div>Chưa có giao dịch nào</div>
-      </div>
-    `;
-        return;
-    }
-
-    container.innerHTML = recentTxs.map(tx => renderTransaction(tx)).join('');
-}
+// Create debounced versions of performance-critical functions
+const debouncedUpdateStats = debounce(updateStats, 100);
+const debouncedLoadWallets = debounce(loadWallets, 200);
 
 function showAlert(elementId, message, type) {
     const alert = document.getElementById(elementId);

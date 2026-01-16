@@ -1,18 +1,20 @@
 const https = require('https');
+const ApiKeyAllocator = require('./api-key-allocator');
 
 class BalanceReporter {
-    constructor(apiKey) {
-        this.apiKey = apiKey;
+    constructor(apiKeys) {
+        this.apiKeyAllocator = new ApiKeyAllocator(apiKeys);
         this.apiUrl = 'https://apilist.tronscanapi.com/api/account/token_asset_overview';
     }
 
     async getWalletBalance(address) {
         return new Promise((resolve, reject) => {
             const url = `${this.apiUrl}?address=${address}`;
+            const apiKey = this.apiKeyAllocator.getNextKey();
 
             const options = {
                 headers: {
-                    'APIKEY': this.apiKey
+                    'TRON-PRO-API-KEY': apiKey
                 }
             };
 
@@ -70,8 +72,9 @@ class BalanceReporter {
         return new Promise(resolve => setTimeout(resolve, ms));
     }
 
-    updateApiKey(apiKey) {
-        this.apiKey = apiKey;
+    updateApiKeys(apiKeys) {
+        this.apiKeyAllocator.updateKeys(apiKeys);
+        console.log('API Keys updated:', this.apiKeyAllocator.getKeysCount());
     }
 }
 

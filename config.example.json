@@ -3,6 +3,12 @@
     "botToken": "YOUR_BOT_TOKEN_HERE",
     "chatId": "YOUR_CHAT_ID_HERE"
   },
+  "tronscan": {
+    "apiKeys": [
+      "YOUR_FIRST_API_KEY_HERE",
+      "YOUR_SECOND_API_KEY_HERE"
+    ]
+  },
   "wallets": [
     {
       "address": "TLj7LiUwgvznr2k8suvtBowGk6VcSJLTSn",

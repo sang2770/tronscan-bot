@@ -16,7 +16,7 @@ class ConfigManager {
         chatId: "",
       },
       tronscan: {
-        apiKey: "",
+        apiKeys: [],
       },
       report: {
         enabled: false,
@@ -42,7 +42,15 @@ class ConfigManager {
   getConfig() {
     try {
       const data = fs.readFileSync(this.configPath, "utf8");
-      return JSON.parse(data);
+      const config = JSON.parse(data);
+      
+      // Migration: convert single apiKey to apiKeys array
+      if (config.tronscan && config.tronscan.apiKey && !config.tronscan.apiKeys) {
+        config.tronscan.apiKeys = config.tronscan.apiKey ? [config.tronscan.apiKey] : [];
+        delete config.tronscan.apiKey;
+      }
+      
+      return config;
     } catch (error) {
       console.error("Error reading config:", error);
       return this.defaultConfig;

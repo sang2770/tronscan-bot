@@ -20,6 +20,8 @@ class TelegramNotifier {
     }
 
     async sendMessage(text, options = {}) {
+        console.log(text);
+        return;
         if (!this.bot) {
             throw new Error('Telegram bot not initialized');
         }

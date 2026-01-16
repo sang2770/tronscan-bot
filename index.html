@@ -188,6 +188,9 @@
       .wallet-list {
         list-style: none;
         margin-top: 20px;
+        max-height: 500px;
+        overflow-y: auto;
+        contain: layout style paint;
       }
 
       .wallet-item {
@@ -199,6 +202,8 @@
         justify-content: space-between;
         align-items: center;
         border-left: 4px solid #667eea;
+        transform: translate3d(0, 0, 0);
+        will-change: transform;
       }
 
       .wallet-info {
@@ -215,49 +220,6 @@
         font-size: 12px;
         color: #6b7280;
         font-family: monospace;
-      }
-
-      .transaction-item {
-        background: #f9fafb;
-        padding: 15px;
-        margin-bottom: 15px;
-        border-radius: 8px;
-        border-left: 4px solid #10b981;
-      }
-
-      .transaction-header {
-        display: flex;
-        justify-content: space-between;
-        margin-bottom: 10px;
-      }
-
-      .transaction-amount {
-        font-size: 18px;
-        font-weight: 600;
-        color: #10b981;
-      }
-
-      .transaction-time {
-        font-size: 12px;
-        color: #6b7280;
-      }
-
-      .transaction-details {
-        font-size: 13px;
-        color: #555;
-        line-height: 1.6;
-      }
-
-      .transaction-link {
-        color: #667eea;
-        text-decoration: none;
-        font-size: 12px;
-        margin-top: 8px;
-        display: inline-block;
-      }
-
-      .transaction-link:hover {
-        text-decoration: underline;
       }
 
       .empty-state {
@@ -346,9 +308,6 @@
         <div class="nav-item" data-page="telegram">
           <span>📱</span> Telegram
         </div>
-        <div class="nav-item" data-page="transactions">
-          <span>📜</span> Giao Dịch
-        </div>
       </div>
 
       <div class="main-content">
@@ -368,10 +327,6 @@
                 <div class="stat-value" id="wallet-count">0</div>
                 <div class="stat-label">Ví Đang Giám Sát</div>
               </div>
-              <div class="stat-card">
-                <div class="stat-value" id="transaction-count">0</div>
-                <div class="stat-label">Giao Dịch Hôm Nay</div>
-              </div>
             </div>
 
             <div class="control-buttons">
@@ -381,16 +336,6 @@
               <button class="btn btn-danger" id="stop-btn" disabled>
                 ⏹️ Dừng Giám Sát
               </button>
-            </div>
-          </div>
-
-          <div class="card">
-            <div class="card-header">Giao Dịch Gần Đây</div>
-            <div id="recent-transactions">
-              <div class="empty-state">
-                <div class="empty-state-icon">📭</div>
-                <div>Chưa có giao dịch nào</div>
-              </div>
             </div>
           </div>
         </div>
@@ -487,8 +432,10 @@
           <div class="card">
             <div class="card-header">Cấu Hình API Tronscan</div>
 
+            <div id="api-key-alert" class="alert"></div>
+
             <div class="form-group">
-              <label class="form-label">API Key</label>
+              <label class="form-label">Thêm API Key</label>
               <input
                 type="text"
                 class="form-input"
@@ -499,6 +446,20 @@
                 Lấy API key từ
                 <a href="https://tronscan.org" target="_blank">Tronscan.org</a>
               </small>
+            </div>
+
+            <button class="btn btn-primary" id="add-api-key-btn">
+              ➕ Thêm API Key
+            </button>
+
+            <div class="form-group" style="margin-top: 20px;">
+              <label class="form-label">Danh Sách API Keys</label>
+              <ul class="wallet-list" id="api-key-list" style="max-height: 300px;">
+                <div class="empty-state">
+                  <div class="empty-state-icon">🔑</div>
+                  <div>Chưa có API key nào</div>
+                </div>
+              </ul>
             </div>
           </div>
 
@@ -536,19 +497,6 @@
               <button class="btn btn-secondary" id="test-report-btn">
                 📊 Gửi Báo Cáo Ngay
               </button>
-            </div>
-          </div>
-        </div>
-
-        <!-- Transactions Page -->
-        <div class="page" id="transactions">
-          <div class="card">
-            <div class="card-header">Lịch Sử Giao Dịch</div>
-            <div id="transaction-history">
-              <div class="empty-state">
-                <div class="empty-state-icon">📜</div>
-                <div>Chưa có giao dịch nào được ghi nhận</div>
-              </div>
             </div>
           </div>
         </div>
