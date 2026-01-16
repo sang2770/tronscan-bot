@@ -10,7 +10,7 @@ class WebSocketMonitor extends EventEmitter {
     super();
     this.apiKeyAllocator = new ApiKeyAllocator(apiKeys);
     this.wallets = wallets;
-    this.pollingInterval = 10000; // 10 seconds
+    this.pollingInterval = 20000; // 20 seconds
     this.pollingTimer = null;
     this.isRunning = false;
     this.lastProcessedTimestamp = {}; // Track last processed timestamp per wallet
