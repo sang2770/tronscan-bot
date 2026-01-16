@@ -69,11 +69,6 @@ document.getElementById('add-wallet-btn').addEventListener('click', async () => 
         return;
     }
 
-    if (!address.startsWith('T') || address.length !== 34) {
-        showAlert('wallet-alert', 'Địa chễ ví Tron không hợp lệ', 'error');
-        return;
-    }
-
     const wallet = {
         address: address,
         name: name || address.substring(0, 10) + '...'

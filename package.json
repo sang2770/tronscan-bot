@@ -4,7 +4,8 @@
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "dev": "electron . --enable-logging"
+    "dev": "cross-env NODE_ENV=development NODE_TLS_REJECT_UNAUTHORIZED=0 electron .",
+    "build": "electron-builder --win --publish never"
   },
   "keywords": [
     "electron",
@@ -13,14 +14,46 @@
     "crypto",
     "monitor"
   ],
-  "author": "",
+  "author": {
+    "name": "Kelvin Nguyen",
+    "url": "https://github.com/kelvinNguyen",
+    "email": "kelvinNguyen@gmail.com"
+  },
   "license": "ISC",
   "description": "Electron app to monitor Tron transactions and send Telegram notifications",
   "dependencies": {
-    "ws": "^8.18.0",
+    "fs": "^0.0.1-security",
     "node-telegram-bot-api": "^0.66.0"
   },
   "devDependencies": {
-    "electron": "^39.2.7"
+    "cross-env": "^10.1.0",
+    "electron": "^39.2.7",
+    "electron-builder": "^26.4.0"
+  },
+  "build": {
+    "appId": "com.kelvinNguyen.tronscanbot",
+    "productName": "Bot Notification",
+    "icon": "public/logo.png",
+    "directories": {
+      "output": "release",
+      "buildResources": "public"
+    },
+    "win": {
+      "target": "nsis"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Bot Notification"
+    },
+    "mac": {
+      "target": "dmg"
+    },
+    "linux": {
+      "target": "deb",
+      "maintainer": "Kelvin Nguyen"
+    }
   }
 }
